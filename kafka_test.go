@@ -1,89 +1,95 @@
 package main
 
 import (
-	"encoding/json"
+	"context"
 	"log"
 	"testing"
+	"time"
 
-	"github.com/IBM/sarama"
-	"github.com/IBM/sarama/mocks"
+	"github.com/segmentio/kafka-go"
 )
 
-// Пример заказа
-var testOrder = Order{
-	OrderUID: "b563feb7b2b84b6test",
-	Delivery: Delivery{
-		Name:    "Test Testov",
-		Phone:   "+9720000000",
-		Zip:     "2639809",
-		City:    "Kiryat Mozkin",
-		Address: "Ploshad Mira 15",
-		Region:  "Kraiot",
-		Email:   "test@gmail.com",
-	},
-	Payment: Payment{
-		Transaction:  "b563feb7b2b84b6test",
-		Currency:     "USD",
-		Provider:     "wbpay",
-		Amount:       1817,
-		PaymentDt:    1637907727,
-		Bank:         "alpha",
-		DeliveryCost: 1500,
-		GoodsTotal:   317,
-		CustomFee:    0,
-	},
-}
+func TestConsumeMessages(t *testing.T) {
+	// Настраиваем тестовые параметры Kafka
+	const (
+		topic     = "test-orders"
+		groupID   = "test-order-service"
+		broker    = "localhost:9092"
+		testOrder = `{"order_uid":"test123","items":[{"name":"item1","price":100}]}`
+	)
 
-func TestKafkaConsumer(t *testing.T) {
-	// Создаём мок Kafka Consumer
-	config := sarama.NewConfig()
-	config.Consumer.Return.Errors = true
-	mockConsumer := mocks.NewConsumer(t, config)
-
-	// Настраиваем ожидание подписки на топик "orders"
-	mockPartitionConsumer := mockConsumer.ExpectConsumePartition("orders", 0, sarama.OffsetOldest)
-
-	// Генерируем тестовые данные (JSON)
-	data, err := json.Marshal(testOrder)
+	// Создаём тестовую тему
+	err := createTestTopic(broker, topic)
 	if err != nil {
-		t.Fatalf("Failed to marshal test order: %v", err)
+		t.Fatalf("Failed to create topic: %v", err)
 	}
+	defer deleteTestTopic(broker, topic)
 
-	// Отправляем сообщение в партицию
-	mockPartitionConsumer.YieldMessage(&sarama.ConsumerMessage{
-		Topic:     "orders",
-		Partition: 0,
-		Offset:    0,
-		Value:     data,
+	// Запускаем обработчик в отдельной горутине
+	go func() {
+		r := kafka.NewReader(kafka.ReaderConfig{
+			Brokers: []string{broker},
+			Topic:   topic,
+			GroupID: groupID,
+		})
+
+		for {
+			m, err := r.ReadMessage(context.Background())
+			if err != nil {
+				log.Printf("could not read message: %v", err)
+				return
+			}
+
+			log.Printf("Received message: %s", string(m.Value))
+
+			// Симуляция обработки
+			_, err = validateOrder(m.Value)
+			if err != nil {
+				log.Printf("Invalid order data: %v", err)
+			} else {
+				t.Log("Message processed successfully!")
+				return
+			}
+		}
+	}()
+
+	// Отправляем тестовое сообщение
+	w := kafka.NewWriter(kafka.WriterConfig{
+		Brokers: []string{broker},
+		Topic:   topic,
 	})
+	defer w.Close()
 
-	// Вызов тестируемой функции
-	err = consumeKafkaWithMock(mockConsumer)
+	err = w.WriteMessages(context.Background(), kafka.Message{
+		Value: []byte(testOrder),
+	})
 	if err != nil {
-		t.Errorf("Kafka consumer test failed: %v", err)
+		t.Fatalf("Failed to send test message: %v", err)
 	}
 
-	// Проверяем, что все ожидания выполнены
-	mockConsumer.Close()
+	// Ждём, чтобы обработчик успел прочитать сообщение
+	time.Sleep(2 * time.Second)
 }
-
-// Функция с mock-реализацией Kafka Consumer
-func consumeKafkaWithMock(consumer sarama.Consumer) error {
-	partitionConsumer, err := consumer.ConsumePartition("orders", 0, sarama.OffsetOldest)
+func createTestTopic(broker, topic string) error {
+	conn, err := kafka.Dial("tcp", broker)
 	if err != nil {
 		return err
 	}
-	defer partitionConsumer.Close()
+	defer conn.Close()
 
-	for msg := range partitionConsumer.Messages() {
-		var order Order
-		if err := json.Unmarshal(msg.Value, &order); err != nil {
-			log.Printf("Error unmarshalling Kafka message: %v", err)
-			continue
-		}
-
-		// В тесте вы можете заменить реальные функции на моки
-		log.Printf("Received order: %v", order.OrderUID)
+	err = conn.CreateTopics(kafka.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	})
+	return err
+}
+func deleteTestTopic(broker, topic string) error {
+	conn, err := kafka.Dial("tcp", broker)
+	if err != nil {
+		return err
 	}
-	return nil
+	defer conn.Close()
+
+	return conn.DeleteTopics(topic)
 }

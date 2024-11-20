@@ -1,7 +1,6 @@
 package main
 
 import (
-	// "fmt"
 	"context"
 	"net/http"
 
@@ -23,7 +22,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load cache from DB: %v", err)
 	}
-
 	// Запуск Kafka-подписки
 
 	go consumeMessages()
@@ -32,4 +30,5 @@ func main() {
 	r.HandleFunc("/{id}", getOrder).Methods("GET")
 
 	http.ListenAndServe(":8080", r)
+
 }
