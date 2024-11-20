@@ -14,12 +14,12 @@ func consumeMessages() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
 	r := kafka.NewReader(kafka.ReaderConfig{
 		Brokers: config.Kafka.Brokers,
 		Topic:   config.Kafka.Topic,
 		GroupID: config.Kafka.GroupID,
 	})
-
 	for {
 		m, err := r.ReadMessage(context.Background())
 		if err != nil {

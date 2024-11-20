@@ -9,3 +9,4 @@ kafka:
   brokers:
     - localhost:9092
   topic: orders
+  group_id: order-service
