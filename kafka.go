@@ -10,10 +10,14 @@ import (
 )
 
 func consumeMessages() {
+	config, err := LoadConfig("config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 	r := kafka.NewReader(kafka.ReaderConfig{
-		Brokers: []string{"localhost:9092"},
-		Topic:   "orders",
-		GroupID: "order-service",
+		Brokers: config.Kafka.Brokers,
+		Topic:   config.Kafka.Topic,
+		GroupID: config.Kafka.GroupID,
 	})
 
 	for {

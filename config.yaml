@@ -1,0 +1,11 @@
+database:
+  user: user
+  password: password
+  name: mydb
+  host: localhost
+  port: 5433
+
+kafka:
+  brokers:
+    - localhost:9092
+  topic: orders

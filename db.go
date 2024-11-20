@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 
 	"github.com/jackc/pgx/v5"
@@ -10,8 +11,13 @@ import (
 )
 
 func connectDB() {
-	var err error
-	db, err = pgx.Connect(context.Background(), "postgres://user:password@localhost:5433/mydb")
+	config, err := LoadConfig("config.yaml")
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
+		config.Database.User, config.Database.Password, config.Database.Host, config.Database.Port, config.Database.Name)
+	db, err = pgx.Connect(context.Background(), dsn)
 	if err != nil {
 		log.Fatal(err)
 	}
